@@ -1,0 +1,59 @@
+name: Bicep Template Build and Test
+
+# Controls when the action will run. 
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: 
+    - main
+    - templates
+  pull_request:
+    branches: main 
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+# JOB to run change detection
+  changes:
+    runs-on: ubuntu-latest
+    # Set job outputs to values from filter step
+    outputs:
+      securelab: ${{ steps.filter.outputs.securelab }}
+    steps:
+    # For pull requests it's not necessary to checkout the code
+    - uses: actions/checkout@v2
+    
+    - uses: dorny/paths-filter@v2
+      id: filter
+      with:
+        filters: |
+          securelab:
+            - 'templates/10-Secure-Lab-Environment/Bicep-Templates/*.bicep'
+
+  # JOB to build and test securelab bicep templates
+  securelab:
+    name: Secure Lab Bicep Build and Test
+
+    needs: changes
+    if: ${{ needs.changes.outputs.securelab == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Run Bicep build
+        uses: aliencube/bicep-build-actions@v0.1
+        with:
+          files: 'templates/10-Secure-Lab-Environment/Bicep-Templates/main.bicep'
+
+      - name: Run ARM TTK
+        uses: aliencube/arm-ttk-actions@v0.3
+        id: armtest
+        with:
+          path: ./templates/10-Secure-Lab-Environment/Bicep-Templates/main.json
+
+      - name: Test result - path
+        shell: bash
+        continue-on-error: true
+        run: |
+          echo "${{ toJSON(fromJSON(steps.pathtest.outputs.results)) }}"         
