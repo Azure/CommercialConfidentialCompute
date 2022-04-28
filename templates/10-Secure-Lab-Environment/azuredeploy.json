@@ -1,0 +1,919 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1272.37030",
+      "templateHash": "4602920198035791716"
+    }
+  },
+  "parameters": {
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "The name of the administrator account of the new VM"
+      }
+    },
+    "authenticationType": {
+      "type": "string",
+      "defaultValue": "password",
+      "allowedValues": [
+        "password",
+        "sshPublicKey"
+      ],
+      "metadata": {
+        "description": "Type of authentication to use on the Virtual Machine."
+      }
+    },
+    "adminPasswordOrKey": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Password or SSH key for the Virtual Machine."
+      }
+    },
+    "virtualMachineBaseName": {
+      "type": "string",
+      "defaultValue": "accvm",
+      "maxLength": 10,
+      "metadata": {
+        "description": "Virtual machine base name that will incrimented and built on for resources.(name-01, name-02, etc)"
+      }
+    },
+    "numberOfACCVMs": {
+      "type": "int",
+      "defaultValue": 1,
+      "maxValue": 50,
+      "minValue": 1,
+      "metadata": {
+        "description": "Number of ACC VMs to deploy"
+      }
+    },
+    "timeUnique": {
+      "type": "string",
+      "defaultValue": "[utcNow('hhmmss')]"
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_DC2as_v5",
+      "allowedValues": [
+        "Standard_DC2as_v5",
+        "Standard_DC4as_v5",
+        "Standard_DC8as_v5",
+        "Standard_DC16as_v5",
+        "Standard_DC32as_v5",
+        "Standard_DC48as_v5",
+        "Standard_DC64as_v5",
+        "Standard_DC96as_v5",
+        "Standard_DC2ads_v5",
+        "Standard_DC4ads_v5",
+        "Standard_DC8ads_v5",
+        "Standard_DC16ads_v5",
+        "Standard_DC32ads_v5",
+        "Standard_DC48ads_v5",
+        "Standard_DC64ads_v5",
+        "Standard_DC96ads_v5"
+      ],
+      "metadata": {
+        "description": "Size of the VM for the DC"
+      }
+    },
+    "osImageName": {
+      "type": "string",
+      "defaultValue": "Windows Server 2022 Gen 2",
+      "allowedValues": [
+        "Windows Server 2022 Gen 2",
+        "Windows Server 2019 Gen 2",
+        "Ubuntu 20.04 LTS Gen 2"
+      ],
+      "metadata": {
+        "description": "OS Image for VMs to use"
+      }
+    },
+    "securityType": {
+      "type": "string",
+      "defaultValue": "DiskWithVMGuestState",
+      "allowedValues": [
+        "VMGuestStateOnly",
+        "DiskWithVMGuestState"
+      ],
+      "metadata": {
+        "description": "VM security type."
+      }
+    },
+    "createBastionHost": {
+      "type": "string",
+      "defaultValue": "yes",
+      "allowedValues": [
+        "yes",
+        "no"
+      ]
+    },
+    "objectIDConfidentialOrchestrator": {
+      "type": "secureString",
+      "defaultValue": "00000000-0000-0000-0000-00000000",
+      "metadata": {
+        "description": "Object ID of the Confidential VM Orchestrator Service Principal"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    }
+  },
+  "variables": {
+    "virtualNetworkName": "vnet-acc-lab",
+    "virtualNetworkAddressRange": "10.0.0.0/16",
+    "subnetName": "sn00",
+    "subnetRange": "10.0.0.0/24",
+    "keyVaultName": "[format('AKV-{0}', uniqueString(resourceGroup().id, parameters('timeUnique')))]",
+    "keyVaultSubnetName": "snAKV",
+    "keyVaultSubnetRange": "10.0.1.0/24",
+    "diskEncryptSetName": "DES-01",
+    "bastionHostName": "bastion-01",
+    "bastionSubnetName": "AzureBastionSubnet",
+    "bastionSubnetRange": "10.0.255.0/24",
+    "imageReference": "[variables('imageList')[parameters('osImageName')]]",
+    "imageList": {
+      "Windows Server 2022 Gen 2": {
+        "publisher": "microsoftwindowsserver",
+        "offer": "windowsserver",
+        "sku": "2022-datacenter-smalldisk-g2",
+        "version": "latest"
+      },
+      "Windows Server 2019 Gen 2": {
+        "publisher": "microsoftwindowsserver",
+        "offer": "windowsserver",
+        "sku": "2019-datacenter-smalldisk-g2",
+        "version": "latest"
+      },
+      "Ubuntu 20.04 LTS Gen 2": {
+        "publisher": "Canonical",
+        "offer": "0001-com-ubuntu-confidential-vm-focal",
+        "sku": "20_04-lts-cvm",
+        "version": "latest"
+      }
+    },
+    "isWindows": "[contains(parameters('osImageName'), 'Windows')]",
+    "windowsConfiguration": {
+      "enableAutomaticUpdates": "true",
+      "provisionVmAgent": "true"
+    },
+    "linuxConfiguration": {
+      "disablePasswordAuthentication": "true",
+      "ssh": {
+        "publicKeys": [
+          {
+            "keyData": "[parameters('adminPasswordOrKey')]",
+            "path": "[format('/home/{0}/.ssh/authorized_keys', parameters('adminUsername'))]"
+          }
+        ]
+      }
+    }
+  },
+  "resources": [
+    {
+      "copy": {
+        "name": "virtualMachineBaseName_nic",
+        "count": "[length(range(0, parameters('numberOfACCVMs')))]"
+      },
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2021-05-01",
+      "name": "[format('{0}-nic-{1}', parameters('virtualMachineBaseName'), range(0, parameters('numberOfACCVMs'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('virtualNetworkName'), variables('subnetName'))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'BastionHost')]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "virtualMachineBaseName_resource",
+        "count": "[length(range(0, parameters('numberOfACCVMs')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2021-11-01",
+      "name": "[format('{0}-{1}', parameters('virtualMachineBaseName'), range(0, parameters('numberOfACCVMs'))[copyIndex()])]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "storageProfile": {
+          "imageReference": "[variables('imageReference')]",
+          "osDisk": {
+            "name": "[format('{0}-{1}-osdisk', parameters('virtualMachineBaseName'), range(0, parameters('numberOfACCVMs'))[copyIndex()])]",
+            "caching": "ReadWrite",
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS",
+              "securityProfile": {
+                "diskEncryptionSet": {
+                  "id": "[resourceId('Microsoft.Compute/diskEncryptionSets', variables('diskEncryptSetName'))]"
+                },
+                "securityEncryptionType": "[parameters('securityType')]"
+              }
+            }
+          },
+          "dataDisks": []
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic-{1}', parameters('virtualMachineBaseName'), range(0, parameters('numberOfACCVMs'))[copyIndex()]))]"
+            }
+          ]
+        },
+        "osProfile": {
+          "computerName": "[format('{0}-{1}', parameters('virtualMachineBaseName'), range(0, parameters('numberOfACCVMs'))[copyIndex()])]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]",
+          "windowsConfiguration": "[if(variables('isWindows'), variables('windowsConfiguration'), json('null'))]"
+        },
+        "securityProfile": {
+          "securityType": "ConfidentialVM",
+          "uefiSettings": {
+            "secureBootEnabled": true,
+            "vTpmEnabled": true
+          }
+        }
+      },
+      "dependsOn": [
+        "virtualMachineBaseName_nic"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "DiskEncryption",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "diskEncryptSetName": {
+            "value": "[variables('diskEncryptSetName')]"
+          },
+          "objectIDConfidentialOrchestrator": {
+            "value": "[parameters('objectIDConfidentialOrchestrator')]"
+          },
+          "keyVaultName": {
+            "value": "[variables('keyVaultName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.4.1272.37030",
+              "templateHash": "8980188286141492054"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for all resources."
+              }
+            },
+            "diskEncryptSetName": {
+              "type": "string",
+              "defaultValue": "DES-01",
+              "metadata": {
+                "description": "Name of Disk Encryption Set"
+              }
+            },
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of Azure Key Vault"
+              }
+            },
+            "objectIDConfidentialOrchestrator": {
+              "type": "string",
+              "metadata": {
+                "description": "Object ID of the Confidential VM Orchestrator Service Principal"
+              }
+            }
+          },
+          "variables": {
+            "keyVaultSku": "premium",
+            "keyName": "acckey01",
+            "keyVaultID": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+            "policyType": "application/json; charset=utf-8",
+            "policyData": "ew0KICAiYW55T2YiOiBbDQogICAgew0KICAgICAgImFsbE9mIjogWw0KICAgICAgICB7DQogICAgICAgICAgImNsYWltIjogIngtbXMtYXR0ZXN0YXRpb24tdHlwZSIsDQogICAgICAgICAgImVxdWFscyI6ICJzZXZzbnB2bSINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJjbGFpbSI6ICJ4LW1zLWNvbXBsaWFuY2Utc3RhdHVzIiwNCiAgICAgICAgICAiZXF1YWxzIjogImF6dXJlLWNvbXBsaWFudC1jdm0iDQogICAgICAgIH0NCiAgICAgIF0sDQogICAgICAiYXV0aG9yaXR5IjogImh0dHBzOi8vc2hhcmVkZXVzLmV1cy5hdHRlc3QuYXp1cmUubmV0LyINCiAgICB9LA0KICAgIHsNCiAgICAgICJhbGxPZiI6IFsNCiAgICAgICAgew0KICAgICAgICAgICJjbGFpbSI6ICJ4LW1zLWF0dGVzdGF0aW9uLXR5cGUiLA0KICAgICAgICAgICJlcXVhbHMiOiAic2V2c25wdm0iDQogICAgICAgIH0sDQogICAgICAgIHsNCiAgICAgICAgICAiY2xhaW0iOiAieC1tcy1jb21wbGlhbmNlLXN0YXR1cyIsDQogICAgICAgICAgImVxdWFscyI6ICJhenVyZS1jb21wbGlhbnQtY3ZtIg0KICAgICAgICB9DQogICAgICBdLA0KICAgICAgImF1dGhvcml0eSI6ICJodHRwczovL3NoYXJlZHd1cy53dXMuYXR0ZXN0LmF6dXJlLm5ldC8iDQogICAgfSwNCiAgICB7DQogICAgICAiYWxsT2YiOiBbDQogICAgICAgIHsNCiAgICAgICAgICAiY2xhaW0iOiAieC1tcy1hdHRlc3RhdGlvbi10eXBlIiwNCiAgICAgICAgICAiZXF1YWxzIjogInNldnNucHZtIg0KICAgICAgICB9LA0KICAgICAgICB7DQogICAgICAgICAgImNsYWltIjogIngtbXMtY29tcGxpYW5jZS1zdGF0dXMiLA0KICAgICAgICAgICJlcXVhbHMiOiAiYXp1cmUtY29tcGxpYW50LWN2bSINCiAgICAgICAgfQ0KICAgICAgXSwNCiAgICAgICJhdXRob3JpdHkiOiAiaHR0cHM6Ly9zaGFyZWRuZXUubmV1LmF0dGVzdC5henVyZS5uZXQvIg0KICAgIH0sDQogICAgew0KICAgICAgImFsbE9mIjogWw0KICAgICAgICB7DQogICAgICAgICAgImNsYWltIjogIngtbXMtYXR0ZXN0YXRpb24tdHlwZSIsDQogICAgICAgICAgImVxdWFscyI6ICJzZXZzbnB2bSINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJjbGFpbSI6ICJ4LW1zLWNvbXBsaWFuY2Utc3RhdHVzIiwNCiAgICAgICAgICAiZXF1YWxzIjogImF6dXJlLWNvbXBsaWFudC1jdm0iDQogICAgICAgIH0NCiAgICAgIF0sDQogICAgICAiYXV0aG9yaXR5IjogImh0dHBzOi8vc2hhcmVkd2V1LndldS5hdHRlc3QuYXp1cmUubmV0LyINCiAgICB9DQogIF0sDQogICJ2ZXJzaW9uIjogIjEuMC4wIg0KfQ"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2021-11-01-preview",
+              "name": "[parameters('keyVaultName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "enableRbacAuthorization": false,
+                "enableSoftDelete": true,
+                "enablePurgeProtection": true,
+                "enabledForDeployment": true,
+                "enabledForDiskEncryption": true,
+                "enabledForTemplateDeployment": true,
+                "softDeleteRetentionInDays": 7,
+                "tenantId": "[subscription().tenantId]",
+                "accessPolicies": [],
+                "sku": {
+                  "name": "[variables('keyVaultSku')]",
+                  "family": "A"
+                },
+                "networkAcls": {
+                  "bypass": "AzureServices",
+                  "defaultAction": "Deny",
+                  "ipRules": [],
+                  "virtualNetworkRules": []
+                },
+                "publicNetworkAccess": "disabled"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/keys",
+              "apiVersion": "2021-11-01-preview",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), variables('keyName'))]",
+              "properties": {
+                "attributes": {
+                  "enabled": true,
+                  "exportable": true
+                },
+                "keyOps": [
+                  "wrapKey",
+                  "unwrapKey"
+                ],
+                "keySize": 3072,
+                "kty": "RSA-HSM",
+                "release_policy": {
+                  "contentType": "[variables('policyType')]",
+                  "data": "[variables('policyData')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/diskEncryptionSets",
+              "apiVersion": "2021-12-01",
+              "name": "[parameters('diskEncryptSetName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "activeKey": {
+                  "sourceVault": {
+                    "id": "[variables('keyVaultID')]"
+                  },
+                  "keyUrl": "[reference(resourceId('Microsoft.KeyVault/vaults/keys', parameters('keyVaultName'), variables('keyName')), '2019-09-01', 'Full').properties.keyUriWithVersion]"
+                },
+                "encryptionType": "ConfidentialVmEncryptedWithCustomerKey"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults/keys', parameters('keyVaultName'), variables('keyName'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/accessPolicies",
+              "apiVersion": "2021-11-01-preview",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), 'add')]",
+              "properties": {
+                "accessPolicies": [
+                  {
+                    "tenantId": "[subscription().tenantId]",
+                    "objectId": "[reference(resourceId('Microsoft.Compute/diskEncryptionSets', parameters('diskEncryptSetName')), '2019-07-01', 'Full').identity.PrincipalId]",
+                    "permissions": {
+                      "keys": [
+                        "get",
+                        "wrapKey",
+                        "unwrapKey"
+                      ],
+                      "secrets": [],
+                      "certificates": []
+                    }
+                  },
+                  {
+                    "tenantId": "[subscription().tenantId]",
+                    "objectId": "[parameters('objectIDConfidentialOrchestrator')]",
+                    "permissions": {
+                      "keys": [
+                        "get",
+                        "release"
+                      ],
+                      "secrets": [],
+                      "certificates": []
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/diskEncryptionSets', parameters('diskEncryptSetName'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "VNet",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "virtualNetworkName": {
+            "value": "[variables('virtualNetworkName')]"
+          },
+          "virtualNetworkAddressRange": {
+            "value": "[variables('virtualNetworkAddressRange')]"
+          },
+          "subnetName": {
+            "value": "[variables('subnetName')]"
+          },
+          "subnetRange": {
+            "value": "[variables('subnetRange')]"
+          },
+          "keyVaultSubnetName": {
+            "value": "[variables('keyVaultSubnetName')]"
+          },
+          "keyVaultSubnetRange": {
+            "value": "[variables('keyVaultSubnetRange')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.4.1272.37030",
+              "templateHash": "17089801794799196322"
+            }
+          },
+          "parameters": {
+            "virtualNetworkName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the Virtual Network to Create"
+              }
+            },
+            "virtualNetworkAddressRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the new VNET in CIDR format"
+              }
+            },
+            "subnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the subnet created in the new VNET"
+              }
+            },
+            "subnetRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the subnet created in the VNET"
+              }
+            },
+            "keyVaultSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the Key Vault subnet created in the VNET"
+              }
+            },
+            "keyVaultSubnetRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the Key Vault subnet created in the new VNET"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for all resources."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2020-08-01",
+              "name": "[parameters('virtualNetworkName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('virtualNetworkAddressRange')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('subnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('subnetRange')]",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  },
+                  {
+                    "name": "[parameters('keyVaultSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('keyVaultSubnetRange')]"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'DiskEncryption')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "PrivateEndpoint",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[variables('keyVaultName')]"
+          },
+          "virtualNetworkName": {
+            "value": "[variables('virtualNetworkName')]"
+          },
+          "keyVaultSubnetName": {
+            "value": "[variables('keyVaultSubnetName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.4.1272.37030",
+              "templateHash": "3607451161486784139"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the AKV"
+              }
+            },
+            "virtualNetworkName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the Virtual Network to use"
+              }
+            },
+            "keyVaultSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the subnet to be used for AKV PE"
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for all resources."
+              }
+            }
+          },
+          "variables": {
+            "vnetId": "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]",
+            "subnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('keyVaultSubnetName'))]",
+            "keyVaultId": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+            "keyVaultPrivateEndpointName_var": "[format('pe-{0}', parameters('keyVaultName'))]",
+            "keyVaultPrivateNetworkLinkName_var": "[format('link_to_{0}', toLower(parameters('virtualNetworkName')))]",
+            "keyVaultPrivateDnsZoneName_var": "privatelink.vaultcore.azure.net",
+            "keyVaultPrivateEndpointGroupName": "vault",
+            "keyVaultPrivateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('keyVaultPrivateDnsZoneName_var'))]",
+            "keyVaultPrivateDnsZoneGroupName_var": "[format('{0}PrivateDnsZoneGroup', variables('keyVaultPrivateEndpointGroupName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('keyVaultPrivateDnsZoneName_var')]",
+              "location": "global",
+              "properties": {}
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2020-06-01",
+              "name": "[format('{0}/{1}', variables('keyVaultPrivateDnsZoneName_var'), variables('keyVaultPrivateNetworkLinkName_var'))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": true,
+                "virtualNetwork": {
+                  "id": "[variables('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('keyVaultPrivateDnsZoneName_var'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2020-11-01",
+              "name": "[variables('keyVaultPrivateEndpointName_var')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "[variables('keyVaultPrivateEndpointName_var')]",
+                    "properties": {
+                      "privateLinkServiceId": "[variables('keyVaultId')]",
+                      "groupIds": [
+                        "[variables('keyVaultPrivateEndpointGroupName')]"
+                      ]
+                    }
+                  }
+                ],
+                "subnet": {
+                  "id": "[variables('subnetId')]"
+                },
+                "customDnsConfigs": [
+                  {
+                    "fqdn": "[format('{0}{1}', parameters('keyVaultName'), variables('keyVaultPrivateDnsZoneName_var'))]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('keyVaultPrivateDnsZoneName_var'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2020-11-01",
+              "name": "[format('{0}/{1}', variables('keyVaultPrivateEndpointName_var'), variables('keyVaultPrivateDnsZoneGroupName_var'))]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "privatelink_vaultcore_azure_net",
+                    "properties": {
+                      "privateDnsZoneId": "[variables('keyVaultPrivateDnsZoneId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('keyVaultPrivateDnsZoneName_var'))]",
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('keyVaultPrivateEndpointName_var'))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'DiskEncryption')]",
+        "[resourceId('Microsoft.Resources/deployments', 'VNet')]"
+      ]
+    },
+    {
+      "condition": "[equals(parameters('createBastionHost'), 'yes')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2020-10-01",
+      "name": "BastionHost",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "virtualNetworkName": {
+            "value": "[variables('virtualNetworkName')]"
+          },
+          "virtualNetworkAddressRange": {
+            "value": "[variables('virtualNetworkAddressRange')]"
+          },
+          "subnetName": {
+            "value": "[variables('subnetName')]"
+          },
+          "subnetRange": {
+            "value": "[variables('subnetRange')]"
+          },
+          "keyVaultSubnetName": {
+            "value": "[variables('keyVaultSubnetName')]"
+          },
+          "keyVaultSubnetRange": {
+            "value": "[variables('keyVaultSubnetRange')]"
+          },
+          "bastionHostName": {
+            "value": "[variables('bastionHostName')]"
+          },
+          "bastionSubnetName": {
+            "value": "[variables('bastionSubnetName')]"
+          },
+          "bastionSubnetRange": {
+            "value": "[variables('bastionSubnetRange')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.4.1272.37030",
+              "templateHash": "8913003611144224125"
+            }
+          },
+          "parameters": {
+            "virtualNetworkName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the Virtual Network to Create"
+              }
+            },
+            "virtualNetworkAddressRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the new VNET in CIDR format"
+              }
+            },
+            "subnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the subnet created in the new VNET"
+              }
+            },
+            "subnetRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the subnet created in the VNET"
+              }
+            },
+            "keyVaultSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the Key Vault subnet created in the VNET"
+              }
+            },
+            "keyVaultSubnetRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the Key Vault subnet created in the VNET"
+              }
+            },
+            "bastionHostName": {
+              "type": "string",
+              "metadata": {
+                "description": "The Name of the Bastion Host"
+              }
+            },
+            "bastionSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "The name of the Bastion subnet created in the  VNET"
+              }
+            },
+            "bastionSubnetRange": {
+              "type": "string",
+              "metadata": {
+                "description": "The address range of the Bastion subnet created in the VNET"
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Azure region for Bastion and virtual network"
+              }
+            }
+          },
+          "variables": {
+            "publicIpAddressName_var": "[format('pip-{0}', parameters('bastionHostName'))]",
+            "publicIpAddressId": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpAddressName_var'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2020-08-01",
+              "name": "[parameters('virtualNetworkName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('virtualNetworkAddressRange')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('subnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('subnetRange')]",
+                      "privateEndpointNetworkPolicies": "Disabled"
+                    }
+                  },
+                  {
+                    "name": "[parameters('keyVaultSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('keyVaultSubnetRange')]"
+                    }
+                  },
+                  {
+                    "name": "[parameters('bastionSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('bastionSubnetRange')]"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2020-05-01",
+              "name": "[variables('publicIpAddressName_var')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static"
+              }
+            },
+            {
+              "type": "Microsoft.Network/bastionHosts",
+              "apiVersion": "2020-05-01",
+              "name": "[parameters('bastionHostName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "ipConfigurations": [
+                  {
+                    "name": "IpConf",
+                    "properties": {
+                      "subnet": {
+                        "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('bastionSubnetName'))]"
+                      },
+                      "publicIPAddress": {
+                        "id": "[variables('publicIpAddressId')]"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpAddressName_var'))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'DiskEncryption')]",
+        "[resourceId('Microsoft.Resources/deployments', 'PrivateEndpoint')]",
+        "[resourceId('Microsoft.Resources/deployments', 'VNet')]"
+      ]
+    }
+  ]
+}
