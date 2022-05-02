@@ -20,6 +20,7 @@ jobs:
     # Set job outputs to values from filter step
     outputs:
       securelab: ${{ steps.filter.outputs.securelab }}
+      accpmk: ${{ steps.filter.outputs.accpmk }}
     steps:
     # For pull requests it's not necessary to checkout the code
     - uses: actions/checkout@v2
@@ -30,6 +31,8 @@ jobs:
         filters: |
           securelab:
             - 'templates/10-Secure-Lab-Environment/Bicep-Templates/*.bicep'
+          accpmk:
+            - 'templates/01-ACC-VM-Platform-Key/Bicep-Templates/*.bicep'
 
   # JOB to build and test securelab bicep templates
   securelab:
@@ -57,3 +60,29 @@ jobs:
         continue-on-error: true
         run: |
           echo "${{ toJSON(fromJSON(steps.pathtest.outputs.results)) }}"         
+    
+  accpmk:
+    name: ACC PMK Bicep Build and Test
+
+    needs: changes
+    if: ${{ needs.changes.outputs.accpmk == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Run Bicep build
+        uses: aliencube/bicep-build-actions@v0.1
+        with:
+          files: 'templates/01-ACC-VM-Platform-Key/Bicep-Templates/main.bicep'
+
+      - name: Run ARM TTK
+        uses: aliencube/arm-ttk-actions@v0.3
+        id: armtest
+        with:
+          path: ./templates/01-ACC-VM-Platform-Key/Bicep-Templates/main.json
+
+      - name: Test result - path
+        shell: bash
+        continue-on-error: true
+        run: |
+          echo "${{ toJSON(fromJSON(steps.pathtest.outputs.results)) }}"  
