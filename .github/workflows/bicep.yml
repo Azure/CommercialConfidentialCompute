@@ -102,13 +102,13 @@ jobs:
       - name: Run Bicep build
         uses: aliencube/bicep-build-actions@v0.1
         with:
-          files: 'templates/02-ACC-VM-AKV-CMK/Bicep-Templates/Bicep-Templates/main.bicep'
+          files: 'templates/02-ACC-VM-AKV-CMK/Bicep-Templates/main.bicep'
 
       - name: Run ARM TTK
         uses: aliencube/arm-ttk-actions@v0.3
         id: acccmktest
         with:
-          path: ./templates/02-ACC-VM-AKV-CMK/Bicep-Templates/Bicep-Templates/main.json
+          path: ./templates/02-ACC-VM-AKV-CMK/Bicep-Templates/main.json
 
       - name: Test result - path
         shell: bash
