@@ -1,0 +1,363 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "adminUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of the administrator account of the new VM and domain"
+            }
+        },
+        "authenticationType": {
+            "type": "string",
+            "defaultValue": "password",
+            "allowedValues": [
+                "password",
+                "sshPublicKey"
+            ],
+            "metadata": {
+                "description": "Type of authentication to use on the Virtual Machine."
+            }
+        },
+        "adminPasswordOrKey": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Password or ssh key for the Virtual Machine."
+            }
+        },
+        "virtualMachineBaseName": {
+            "type": "string",
+            "defaultValue": "accvm",
+            "maxLength": 10,
+            "metadata": {
+                "description": "Virtual machine base name that will incrimented and built on for resources."
+            }
+        },
+        "numberOfACCVMs": {
+            "type": "int",
+            "defaultValue": 1,
+            "minValue": 1,
+            "maxValue": 50,
+            "metadata": {
+                "description": "Number of ACC VMs to deploy"
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_DC2as_v5",
+            "metadata": {
+                "description": "Size of the VM for the DC"
+            },
+            "allowedValues": [
+                "Standard_DC2as_v5",
+                "Standard_DC4as_v5",
+                "Standard_DC8as_v5",
+                "Standard_DC16as_v5",
+                "Standard_DC32as_v5",
+                "Standard_DC48as_v5",
+                "Standard_DC64as_v5",
+                "Standard_DC96as_v5",
+                "Standard_DC2ads_v5",
+                "Standard_DC4ads_v5",
+                "Standard_DC8ads_v5",
+                "Standard_DC16ads_v5",
+                "Standard_DC32ads_v5",
+                "Standard_DC48ads_v5",
+                "Standard_DC64ads_v5",
+                "Standard_DC96ads_v5"
+            ]
+        },
+        "osImageName": {
+            "type": "string",
+            "defaultValue": "Windows Server 2022 Gen 2",
+            "allowedValues": [
+                "Windows Server 2022 Gen 2",
+                "Windows Server 2019 Gen 2",
+                "Ubuntu 20.04 LTS Gen 2"
+            ],
+            "metadata": {
+                "description": "OS Image for VMs to use"
+            }
+        },
+        "securityType": {
+            "type": "string",
+            "defaultValue": "DiskWithVMGuestState",
+            "allowedValues": [
+                "VMGuestStateOnly",
+                "DiskWithVMGuestState"
+            ],
+            "metadata": {
+                "description": "VM security type."
+            }
+        },
+        "createBastionHost": {
+            "type": "string",
+            "defaultValue": "yes",
+            "allowedValues": [
+                "yes",
+                "no"
+            ]
+        },
+        "objectIDConfidentialOrchestrator": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Object ID of the Confidential VM Orchestrator Service Principal"
+            }
+        },
+        "_artifactsLocation": {
+            "type": "string",
+            "metadata": {
+                "description": "The location of resources, such as templates and DSC modules, that the template depends on"
+            },
+            "defaultValue": "[deployment().properties.templateLink.uri]"
+        },
+        "_artifactsLocationSasToken": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Auto-generated token to access _artifactsLocation. Leave it blank unless you need to provide your own value."
+            },
+            "defaultValue": ""
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Location for all resources."
+            }
+        }
+    },
+    "variables": {
+        "virtualNetworkName": "vnet-acc-lab",
+        "virtualNetworkAddressRange": "10.0.0.0/16",
+        "subnetName": "sn00",
+        "subnetRange": "10.0.0.0/24",
+        "bastionHostName": "bastion-01",
+        "bastionSubnetName": "AzureBastionSubnet",
+        "bastionSubnetRange": "10.0.255.0/24",
+        "keyVaultName": "[concat('AKV-', uniquestring(resourceGroup().id, deployment().name))]",
+        "diskEncryptSetName": "DES-01",
+        "imageReference": "[variables('imageList')[parameters('osImageName')]]",
+        "imageList": {
+            "Windows Server 2022 Gen 2": {
+                "publisher": "microsoftwindowsserver",
+                "offer": "windowsserver",
+                "sku": "2022-datacenter-smalldisk-g2",
+                "version": "latest"
+            },
+            "Windows Server 2019 Gen 2": {
+                "publisher": "microsoftwindowsserver",
+                "offer": "windowsserver",
+                "sku": "2019-datacenter-smalldisk-g2",
+                "version": "latest"
+            },
+            "Ubuntu 20.04 LTS Gen 2": {
+                "publisher": "Canonical",
+                "offer": "0001-com-ubuntu-confidential-vm-focal",
+                "sku": "20_04-lts-cvm",
+                "version": "latest"
+            }
+        },
+        "isWindows": "[contains(parameters('osImageName'), 'Windows')]",
+        "windowsConfiguration": {
+            "enableAutomaticUpdates": "true",
+            "provisionVmAgent": "true"
+        },
+        "linuxConfiguration": {
+            "disablePasswordAuthentication": "true",
+            "ssh": {
+                "publicKeys": [
+                    {
+                        "keyData": "[parameters('adminPasswordOrKey')]",
+                        "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]"
+                    }
+                ]
+            }
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2021-04-01",
+            "name": "DiskEncryption",
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "[uri(parameters('_artifactsLocation'), concat('nestedtemplates/disk-encryption.json', parameters('_artifactsLocationSasToken')))]",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "diskEncryptSetName": {
+                        "value": "[variables('diskEncryptSetName')]"
+                    },
+                    "keyVaultName": {
+                        "value": "[variables('keyVaultName')]"
+                    },
+                    "objectIDConfidentialOrchestrator": {
+                        "value": "[parameters('objectIDConfidentialOrchestrator')]"
+                    },
+                    "location": {
+                        "value": "[parameters('location')]"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2021-04-01",
+            "name": "VNet",
+            "dependsOn": [
+                "DiskEncryption"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "[uri(parameters('_artifactsLocation'), concat('nestedtemplates/vnet.json', parameters('_artifactsLocationSasToken')))]",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "virtualNetworkName": {
+                        "value": "[variables('virtualNetworkName')]"
+                    },
+                    "virtualNetworkAddressRange": {
+                        "value": "[variables('virtualNetworkAddressRange')]"
+                    },
+                    "subnetName": {
+                        "value": "[variables('subnetName')]"
+                    },
+                    "subnetRange": {
+                        "value": "[variables('subnetRange')]"
+                    },
+                    "location": {
+                        "value": "[parameters('location')]"
+                    }
+                }
+            }
+        },
+        {
+            "condition": "[equals(parameters('createBastionHost'), 'yes')]",
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2021-04-01",
+            "name": "Bastion",
+            "dependsOn": [
+                "VNet"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "templateLink": {
+                    "uri": "[uri(parameters('_artifactsLocation'), concat('nestedtemplates/bastion.json', parameters('_artifactsLocationSasToken')))]",
+                    "contentVersion": "1.0.0.0"
+                },
+                "parameters": {
+                    "virtualNetworkName": {
+                        "value": "[variables('virtualNetworkName')]"
+                    },
+                    "virtualNetworkAddressRange": {
+                        "value": "[variables('virtualNetworkAddressRange')]"
+                    },
+                    "subnetName": {
+                        "value": "[variables('subnetName')]"
+                    },
+                    "subnetRange": {
+                        "value": "[variables('subnetRange')]"
+                    },
+                    "bastionSubnetName": {
+                        "value": "[variables('bastionSubnetName')]"
+                    },
+                    "bastionSubnetRange": {
+                        "value": "[variables('bastionSubnetRange')]"
+                    },
+                    "bastionHostName": {
+                        "value": "[variables('bastionHostName')]"
+                    },
+                    "location": {
+                        "value": "[parameters('location')]"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2019-02-01",
+            "name": "[concat(parameters('virtualMachineBaseName'),'-nic-', copyindex())]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "Bastion"
+            ],
+            "copy": {
+                "name": "VM-NIC-Loop",
+                "count": "[parameters('numberOfACCVMs')]"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('virtualNetworkName'), variables('subnetName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2021-11-01",
+            "name": "[concat(parameters('virtualMachineBaseName'),'-', copyIndex())]",
+            "location": "[parameters('location')]",
+            "copy": {
+                "name": "host-vmLoop",
+                "count": "[parameters('numberOfACCVMs')]"
+            },
+            "dependsOn": [
+                "VM-NIC-Loop"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "storageProfile": {
+                    "imageReference": "[variables('imageReference')]",
+                    "osDisk": {
+                        "name": "[concat(parameters('virtualMachineBaseName'),'-', copyIndex(),'-osdisk')]",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Premium_LRS",
+                            "securityProfile": {
+                                "diskEncryptionSet": {
+                                    "id": "[resourceId('Microsoft.Compute/diskEncryptionSets', variables('diskEncryptSetName'))]"
+                                },
+                                "securityEncryptionType": "[parameters('securityType')]"
+                            }
+                        }
+                    },
+                    "dataDisks": []
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces',concat(parameters('virtualMachineBaseName'),'-nic-', copyindex()))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[concat(parameters('virtualMachineBaseName'),'-', copyIndex())]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPasswordOrKey')]",
+                    "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]",
+                    "windowsConfiguration": "[if(variables('isWindows'), variables('windowsConfiguration'), json('null'))]"
+                },
+                "securityProfile": {
+                    "securityType": "ConfidentialVM",
+                    "uefiSettings": {
+                        "secureBootEnabled": true,
+                        "vTpmEnabled": true
+                    }
+                }
+            },
+            "resources": []
+        }
+    ]
+}

@@ -1,0 +1,149 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Location for all resources."
+            }
+        },
+        "diskEncryptSetName": {
+            "type": "string",
+            "defaultValue": "DES-01",
+            "metadata": {
+                "description": "Name of Disk Encryption Set"
+            }
+        },
+        "keyVaultName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of Azure Key Vault"
+            }
+        },
+        "objectIDConfidentialOrchestrator": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Object ID of the Confidential VM Orchestrator Service Principal"
+            }
+        }
+    },
+    "variables": {
+        "keyVaultSku": "premium",
+        "keyName": "acckey01",
+        "keyVaultID": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+        "keyVaultKeyID": "[resourceId('Microsoft.KeyVault/vaults/keys', parameters('keyvaultName'), variables('keyName'))]",
+        "diskEncryptSetID": "[resourceId('Microsoft.Compute/diskEncryptionSets', parameters('diskEncryptSetName'))]",
+        "policyType": "application/json; charset=utf-8",
+        "policyData": "ew0KICAiYW55T2YiOiBbDQogICAgew0KICAgICAgImFsbE9mIjogWw0KICAgICAgICB7DQogICAgICAgICAgImNsYWltIjogIngtbXMtYXR0ZXN0YXRpb24tdHlwZSIsDQogICAgICAgICAgImVxdWFscyI6ICJzZXZzbnB2bSINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJjbGFpbSI6ICJ4LW1zLWNvbXBsaWFuY2Utc3RhdHVzIiwNCiAgICAgICAgICAiZXF1YWxzIjogImF6dXJlLWNvbXBsaWFudC1jdm0iDQogICAgICAgIH0NCiAgICAgIF0sDQogICAgICAiYXV0aG9yaXR5IjogImh0dHBzOi8vc2hhcmVkZXVzLmV1cy5hdHRlc3QuYXp1cmUubmV0LyINCiAgICB9LA0KICAgIHsNCiAgICAgICJhbGxPZiI6IFsNCiAgICAgICAgew0KICAgICAgICAgICJjbGFpbSI6ICJ4LW1zLWF0dGVzdGF0aW9uLXR5cGUiLA0KICAgICAgICAgICJlcXVhbHMiOiAic2V2c25wdm0iDQogICAgICAgIH0sDQogICAgICAgIHsNCiAgICAgICAgICAiY2xhaW0iOiAieC1tcy1jb21wbGlhbmNlLXN0YXR1cyIsDQogICAgICAgICAgImVxdWFscyI6ICJhenVyZS1jb21wbGlhbnQtY3ZtIg0KICAgICAgICB9DQogICAgICBdLA0KICAgICAgImF1dGhvcml0eSI6ICJodHRwczovL3NoYXJlZHd1cy53dXMuYXR0ZXN0LmF6dXJlLm5ldC8iDQogICAgfSwNCiAgICB7DQogICAgICAiYWxsT2YiOiBbDQogICAgICAgIHsNCiAgICAgICAgICAiY2xhaW0iOiAieC1tcy1hdHRlc3RhdGlvbi10eXBlIiwNCiAgICAgICAgICAiZXF1YWxzIjogInNldnNucHZtIg0KICAgICAgICB9LA0KICAgICAgICB7DQogICAgICAgICAgImNsYWltIjogIngtbXMtY29tcGxpYW5jZS1zdGF0dXMiLA0KICAgICAgICAgICJlcXVhbHMiOiAiYXp1cmUtY29tcGxpYW50LWN2bSINCiAgICAgICAgfQ0KICAgICAgXSwNCiAgICAgICJhdXRob3JpdHkiOiAiaHR0cHM6Ly9zaGFyZWRuZXUubmV1LmF0dGVzdC5henVyZS5uZXQvIg0KICAgIH0sDQogICAgew0KICAgICAgImFsbE9mIjogWw0KICAgICAgICB7DQogICAgICAgICAgImNsYWltIjogIngtbXMtYXR0ZXN0YXRpb24tdHlwZSIsDQogICAgICAgICAgImVxdWFscyI6ICJzZXZzbnB2bSINCiAgICAgICAgfSwNCiAgICAgICAgew0KICAgICAgICAgICJjbGFpbSI6ICJ4LW1zLWNvbXBsaWFuY2Utc3RhdHVzIiwNCiAgICAgICAgICAiZXF1YWxzIjogImF6dXJlLWNvbXBsaWFudC1jdm0iDQogICAgICAgIH0NCiAgICAgIF0sDQogICAgICAiYXV0aG9yaXR5IjogImh0dHBzOi8vc2hhcmVkd2V1LndldS5hdHRlc3QuYXp1cmUubmV0LyINCiAgICB9DQogIF0sDQogICJ2ZXJzaW9uIjogIjEuMC4wIg0KfQ"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.KeyVault/vaults",
+            "apiVersion": "2021-11-01-preview",
+            "name": "[parameters('keyvaultName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "enableRbacAuthorization": false,
+                "enableSoftDelete": true,
+                "enablePurgeProtection": true,
+                "enabledForDeployment": true,
+                "enabledForDiskEncryption": true,
+                "enabledForTemplateDeployment": true,
+                "tenantId": "[subscription().tenantId]",
+                "accessPolicies": [],
+                "sku": {
+                    "name": "[variables('keyVaultSku')]",
+                    "family": "A"
+                },
+                "networkAcls": {
+                    "defaultAction": "Allow",
+                    "bypass": "AzureServices"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/keys",
+            "apiVersion": "2021-11-01-preview",
+            "name": "[concat(parameters('keyvaultName'), '/', variables('keyName'))]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('keyVaultID')]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true,
+                    "exportable": true
+                },
+                "keyOps": [
+                    "wrapKey",
+                    "unwrapKey"
+                ],
+                "keySize": 3072,
+                "kty": "RSA-HSM",
+                "release_policy": {
+                    "contentType": "[variables('policyType')]",
+                    "data": "[variables('policyData')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/diskEncryptionSets",
+            "apiVersion": "2021-12-01",
+            "name": "[parameters('diskEncryptSetName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[variables('keyVaultKeyID')]"
+            ],
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "activeKey": {
+                    "sourceVault": {
+                        "id": "[variables('keyVaultID')]"
+                    },
+                    "keyUrl": "[reference(resourceId('Microsoft.KeyVault/vaults/keys', parameters('keyvaultName'), variables('keyName')), '2019-09-01', 'Full').properties.keyUriWithVersion]"
+                },
+                "encryptionType": "ConfidentialVmEncryptedWithCustomerKey"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/accessPolicies",
+            "apiVersion": "2021-11-01-preview",
+            "name": "[concat(parameters('keyvaultName'), '/add')]",
+            "dependsOn": [
+                "[variables('diskEncryptSetID')]",
+                "[variables('keyVaultKeyID')]"
+            ],
+            "properties": {
+                "accessPolicies": [
+                    {
+                        "tenantId": "[subscription().tenantId]",
+                        "objectId": "[reference(resourceId('Microsoft.Compute/diskEncryptionSets', parameters('diskEncryptSetName')), '2019-07-01', 'Full').identity.PrincipalId]",
+                        "permissions": {
+                            "keys": [
+                                "Get",
+                                "WrapKey",
+                                "UnwrapKey"
+                            ],
+                            "secrets": [],
+                            "certificates": []
+                        }
+                    },
+                    {
+                        "tenantId": "[subscription().tenantId]",
+                        "objectId": "[parameters('objectIDConfidentialOrchestrator')]",
+                        "permissions": {
+                            "keys": [
+                                "Get",
+                                "Release"
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}
