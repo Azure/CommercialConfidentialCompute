@@ -16,3 +16,10 @@ The Azure Confidential Compute SKU VMs require an Azure AD Service Principal to 
 Once the service principal is created, the unique per tenent Object ID of the Service Principal will need to be identified and provided as part of the template deployment to assign permissions with the Azure Key Vault.
 
 `(az ad sp show --id "bf7b6499-ff71-4aa2-97a4-f372087be7f0" | Out-String | ConvertFrom-Json).objectId`
+
+</br>
+
+## Deploy
+</br>
+
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2FCommercialConfidentialCompute%2Fmain%2Ftemplates%2F02-ACC-VM-AKV-CMK%2Fazuredeploy.json%3Ftoken%3DGHSAT0AAAAAABTVTKMABLLEZSW673SVDUWMYTS7DDA)
