@@ -1,15 +1,13 @@
-# Project
+# Commercial Confidential Compute Architecture
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+This repository contains artifacts related to confidential compute architectures in Azure Commercial to support different compliance scenarios. The goal of these artifacts is to:
 
-As the maintainer of this project, please make a few updates:
+- Provide a secure compute architecture for Azure Commercial
+- Enable seamless and secure communication between IaaS PaaS and SaaS platforms
+- Connect users with a unified identify to the secure resources they need
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
-
+## Concept Architecture
+![HighLevel-DesignVisio](/images/highlevel-design.png)
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
