@@ -7,7 +7,7 @@ This repository contains artifacts related to confidential compute architectures
 - Connect users with a unified identify to the secure resources they need
 
 ## Concept Architecture
-![HighLevel-DesignVisio](/images/highlevel-design.png)
+![HighLevel-DesignVisio](/images/highlevel-design-main.png)
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
