@@ -19,7 +19,9 @@ param deploySelfHostedIntegrationRuntimes bool = false
 param datafactoryIds array
 param userAssignedIdentityId string
 param keyVaultId string
-param keyVaultKeyUri string
+param keyVaultUri string
+param keyVaultKeyVirtualMachineUri string
+param keyVaultKeyDataDactoryName string
 
 // Variables
 var datafactoryRuntimes001Name = '${prefix}-runtime-datafactory001'
@@ -37,6 +39,9 @@ module datafactoryRuntimes001 'services/datafactoryruntime.bicep' = {
     privateDnsZoneIdDataFactory: privateDnsZoneIdDataFactory
     privateDnsZoneIdDataFactoryPortal: privateDnsZoneIdDataFactoryPortal
     purviewId: purviewId
+    userAssignedIdentityId: userAssignedIdentityId
+    keyVaultUri: keyVaultUri
+    keyVaultKeyName: keyVaultKeyDataDactoryName
   }
 }
 
@@ -67,7 +72,7 @@ module datafactoryRuntimes001SelfHostedIntegrationRuntime001 'services/selfHoste
     vmssSkuTier: 'Standard'
     userAssignedIdentityId: userAssignedIdentityId
     keyVaultId: keyVaultId
-    keyVaultKeyUri: keyVaultKeyUri
+    keyVaultKeyUri: keyVaultKeyVirtualMachineUri
   }
 }
 

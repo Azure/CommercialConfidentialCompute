@@ -146,9 +146,10 @@ module runtimesResources 'modules/runtimes.bicep' = {
     privateDnsZoneIdDataFactoryPortal: privateDnsZoneIdDataFactoryPortal
     userAssignedIdentityId: cmkResources.outputs.userAssignedIdentityId
     keyVaultId: cmkResources.outputs.keyVaultId
-    keyVaultKeyUri: cmkResources.outputs.keyVaultKeyVirtualMachineKeyUri
+    keyVaultUri: cmkResources.outputs.keyVaultUri
+    keyVaultKeyVirtualMachineUri: cmkResources.outputs.keyVaultKeyVirtualMachineKeyUri
+    keyVaultKeyDataDactoryName: cmkResources.outputs.keyVaultKeyDataFactoryName
   }
 }
-
 
 // Outputs

@@ -11,6 +11,9 @@ param datafactoryName string
 param privateDnsZoneIdDataFactory string = ''
 param privateDnsZoneIdDataFactoryPortal string = ''
 param purviewId string = ''
+param userAssignedIdentityId string
+param keyVaultUri string
+param keyVaultKeyName string
 
 // Variables
 var datafactoryDefaultManagedVnetIntegrationRuntimeName = 'AutoResolveIntegrationRuntime'
@@ -23,9 +26,19 @@ resource datafactory 'Microsoft.DataFactory/factories@2018-06-01' = {
   location: location
   tags: tags
   identity: {
-    type: 'SystemAssigned'
+    type: 'SystemAssigned,UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
   }
   properties: {
+    encryption: {
+      identity: {
+        userAssignedIdentity: userAssignedIdentityId
+      }
+      keyname: keyVaultKeyName
+      keyvaulturi: keyVaultUri
+    }
     globalParameters: {}
     publicNetworkAccess: 'Disabled'
     #disable-next-line BCP037
