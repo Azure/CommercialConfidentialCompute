@@ -28,4 +28,4 @@ Once the service principal is created, the unique per tenant Object ID of the Se
 ## Deploy
 </br>
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2FCommercialConfidentialCompute%2Fmain%2Ftemplates%2F10-Secure-Lab-Environment%2Fazuredeploy.json%3Ftoken%3DGHSAT0AAAAAABTVTKMAKTPCZNUA5YWZU7CSYTS7FVA)
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2FCommercialConfidentialCompute%2Fmain%2Ftemplates%2F10-Secure-Lab-Environment%2Fazuredeploy.json)
